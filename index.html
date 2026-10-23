@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Таблица отметок студента по токену</title>
+<style>
+    :root {
+        --bg: #eef1f4; --card: #ffffff; --ink: #18222e; --muted: #5a6775; --line: #d0d7df;
+        --accent: #1f4fd1; --accent-ink: #ffffff; --soft: #e6ecfa;
+        --bad: #c0392b; --mid: #b26a00; --good: #0b7a4f;
+        --serif: "Charter", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+        --sans: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+        --mono: ui-monospace, Consolas, monospace;
+        color-scheme: light;
+    }
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --bg: #12171d; --card: #1b222b; --ink: #e5eaf0; --muted: #9aa7b5; --line: #313c48;
+            --accent: #86a4ff; --accent-ink: #0d1420; --soft: #222c3d;
+            --bad: #ff7b6b; --mid: #ffb84a; --good: #45c48f;
+            color-scheme: dark;
+        }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 var(--sans); }
+    .wrap { max-width: 58rem; margin: 0 auto; padding: 2rem 1.25rem 3rem; }
+    h1 { margin: 0 0 0.3rem; font: 600 clamp(1.7rem, 4vw, 2.3rem)/1.15 var(--serif); }
+    .sub { margin: 0 0 1.5rem; color: var(--muted); max-width: 42em; }
+    h2 { margin: 0 0 0.2rem; font: 600 1.3rem/1.25 var(--serif); }
+
+    form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.75rem; align-items: end;
+           padding: 1rem 1.1rem; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+    label { display: grid; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); }
+    input, select { font: 0.95rem var(--sans); padding: 0.55rem 0.65rem; border: 1px solid var(--line);
+                    border-radius: 6px; background: var(--bg); color: var(--ink); width: 100%; }
+    input[name="token"] { font-family: var(--mono); }
+    button { font: 600 0.95rem var(--sans); padding: 0.6rem 1.2rem; border: 0; border-radius: 6px;
+             background: var(--accent); color: var(--accent-ink); cursor: pointer; white-space: nowrap; }
+    button:disabled { opacity: 0.5; cursor: progress; }
+    :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+    form .wide { grid-column: 1 / -1; }
+    details summary { cursor: pointer; font-size: 0.85rem; color: var(--muted); }
+    details label { margin-top: 0.6rem; }
+    .token-line { margin: 0.8rem 0 0; font-size: 0.85rem; color: var(--good); }
+    .token-line code { font-family: var(--mono); }
+    .hint { margin: 0.6rem 0 0; font-size: 0.82rem; color: var(--muted); }
+    .hint code { font-family: var(--mono); font-size: 0.8rem; }
+
+    .msg { margin: 1.2rem 0 0; padding: 0.7rem 0.9rem; border-left: 3px solid var(--bad); background: var(--card); color: var(--bad); }
+    .msg[hidden] { display: none; }
+
+    .who { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; align-items: end; margin: 2rem 0 1rem; }
+    .who p { margin: 0; color: var(--muted); }
+    .who select { width: auto; min-width: 16rem; }
+
+    .course { margin: 0 0 1.5rem; background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+    .course-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem 1.1rem; border-bottom: 1px solid var(--line); }
+    .total { text-align: right; }
+    .total b { display: block; font: 600 1.9rem/1 var(--serif); font-variant-numeric: tabular-nums; }
+    .total span { font-size: 0.8rem; color: var(--muted); }
+    .scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.93rem; }
+    th, td { padding: 0.55rem 1.1rem; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+    thead th { font-size: 0.78rem; font-weight: 600; color: var(--muted); white-space: nowrap; }
+    tbody tr:last-child td { border-bottom: 0; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .kind { font-size: 0.8rem; color: var(--muted); }
+    .bar { position: relative; height: 6px; min-width: 5rem; background: var(--soft); border-radius: 3px; overflow: hidden; }
+    .bar i { position: absolute; inset: 0 auto 0 0; border-radius: 3px; }
+    .none { color: var(--muted); }
+    .empty { padding: 1rem 1.1rem; margin: 0; color: var(--muted); }
+    .foot { margin-top: 2rem; font-size: 0.82rem; color: var(--muted); }
+
+    @media (max-width: 720px) {
+        form { grid-template-columns: 1fr; }
+        th, td { padding: 0.5rem 0.7rem; }
+    }
+</style>
+</head>
+<body>
+<div class="wrap">
+    <h1>Таблица отметок студента по токену</h1>
+    <p class="sub">Страница получает токен веб-сервиса Moodle и по нему через REST API показывает оценки по всем курсам, на которые вы записаны. Данные отправляются только на указанный сайт Moodle.</p>
+
+    <form id="form">
+        <label class="wide">Адрес Moodle
+            <input name="site" type="url" required value="https://node-server.ru/m" autocomplete="url">
+        </label>
+        <label>Логин
+            <input name="username" type="text" autocomplete="username" spellcheck="false">
+        </label>
+        <label>Пароль
+            <input name="password" type="password" autocomplete="current-password">
+        </label>
+        <button type="submit" id="go">Получить оценки</button>
+        <details class="wide">
+            <summary>У меня уже есть токен</summary>
+            <label>Токен веб-сервиса
+                <input name="token" type="password" autocomplete="off" spellcheck="false" placeholder="Если заполнено, логин и пароль не нужны">
+            </label>
+        </details>
+    </form>
+    <p class="hint">Шаг 1: страница отправляет логин и пароль в <code>login/token.php</code> вашего Moodle и получает токен. Шаг 2: по токену вызывает REST API и строит таблицу. Пароль и токен никуда не сохраняются.</p>
+    <p class="token-line" id="token-line" hidden></p>
+
+    <p class="msg" id="msg" role="alert" hidden></p>
+
+    <section id="result" hidden>
+        <div class="who">
+            <div>
+                <h2 id="who-name"></h2>
+                <p id="who-site"></p>
+            </div>
+            <label>Курс
+                <select id="course-filter"><option value="all">Все курсы</option></select>
+            </label>
+        </div>
+        <div id="courses"></div>
+    </section>
+
+    <p class="foot">Используемые функции: login/token.php, core_webservice_get_site_info, core_enrol_get_users_courses, gradereport_user_get_grade_items. Автор: Владислав Прозоров.</p>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    var form = document.getElementById('form');
+    var go = document.getElementById('go');
+    var msg = document.getElementById('msg');
+    var result = document.getElementById('result');
+    var coursesBox = document.getElementById('courses');
+    var filter = document.getElementById('course-filter');
+
+    function call(site, token, fn, params) {
+        var body = new URLSearchParams({ wstoken: token, wsfunction: fn, moodlewsrestformat: 'json' });
+        Object.keys(params || {}).forEach(function (k) { body.append(k, params[k]); });
+        return fetch(site.replace(/\/+$/, '') + '/webservice/rest/server.php', { method: 'POST', body: body })
+            .then(function (r) {
+                if (!r.ok) { throw new Error('Сервер ответил ' + r.status + ' ' + r.statusText); }
+                return r.json();
+            })
+            .then(function (data) {
+                // Moodle сообщает об ошибках в теле ответа со статусом 200
+                if (data && data.exception) {
+                    var text = data.errorcode === 'invalidtoken'
+                        ? 'Неверный или просроченный токен.'
+                        : data.errorcode === 'accessexception'
+                            ? 'Нет доступа к функции ' + fn + ' для этого токена.'
+                            : (data.message || data.errorcode);
+                    throw new Error(text);
+                }
+                return data;
+            });
+    }
+
+    function getToken(site, given, username, password) {
+        if (given) { return Promise.resolve(given); }
+        var body = new URLSearchParams({ username: username, password: password, service: 'moodle_mobile_app' });
+        return fetch(site + '/login/token.php', { method: 'POST', body: body })
+            .then(function (r) {
+                if (!r.ok) { throw new Error('Сервер ответил ' + r.status + ' ' + r.statusText); }
+                return r.json();
+            })
+            .then(function (data) {
+                if (data.token) { return data.token; }
+                if (data.errorcode === 'invalidlogin') { throw new Error('Неверный логин или пароль.'); }
+                throw new Error(data.error || 'Moodle не выдал токен.');
+            });
+    }
+
+    function esc(s) {
+        var d = document.createElement('div');
+        d.textContent = s == null ? '' : String(s);
+        return d.innerHTML;
+    }
+
+    function clean(html) {
+        var d = document.createElement('div');
+        d.innerHTML = html || '';
+        return d.textContent.trim();
+    }
+
+    function color(pct) {
+        if (pct >= 85) { return 'var(--good)'; }
+        if (pct >= 50) { return 'var(--mid)'; }
+        return 'var(--bad)';
+    }
+
+    function kindName(item) {
+        if (item.itemtype === 'course') { return 'Итог курса'; }
+        if (item.itemtype === 'category') { return 'Итог категории'; }
+        var map = { quiz: 'Тест', scorm: 'SCORM', assign: 'Задание', lti: 'LTI', forum: 'Форум', lesson: 'Лекция', workshop: 'Семинар' };
+        return map[item.itemmodule] || item.itemmodule || 'Вручную';
+    }
+
+    function renderCourse(course, items) {
+        var total = items.filter(function (i) { return i.itemtype === 'course'; })[0];
+        var rows = items.filter(function (i) { return i.itemtype !== 'course'; });
+
+        var head = '<div class="course-head"><div><h2>' + esc(course.fullname) + '</h2>' +
+            '<span class="kind">' + esc(course.shortname) + '</span></div>';
+        if (total) {
+            head += '<div class="total"><b>' + esc(clean(total.gradeformatted) || '–') + '</b>' +
+                '<span>итог курса' + (total.percentageformatted && total.percentageformatted !== '-' ? ', ' + esc(total.percentageformatted) : '') + '</span></div>';
+        }
+        head += '</div>';
+
+        if (!rows.length) {
+            return '<article class="course" data-course="' + course.id + '">' + head +
+                '<p class="empty">В курсе нет оцениваемых элементов.</p></article>';
+        }
+
+        var body = rows.map(function (i) {
+            var has = i.graderaw !== null && i.graderaw !== undefined;
+            var pct = has && i.grademax > i.grademin ? (i.graderaw - i.grademin) / (i.grademax - i.grademin) * 100 : null;
+            return '<tr>' +
+                '<td>' + esc(clean(i.itemname) || 'Без названия') + '</td>' +
+                '<td class="kind">' + esc(kindName(i)) + '</td>' +
+                '<td class="num">' + (has ? '<b>' + esc(clean(i.gradeformatted)) + '</b>' : '<span class="none">нет оценки</span>') + '</td>' +
+                '<td class="num kind">' + esc(clean(i.rangeformatted) || (i.grademin + '–' + i.grademax)) + '</td>' +
+                '<td>' + (pct === null ? '' : '<div class="bar" title="' + pct.toFixed(0) + '%"><i style="width:' + pct.toFixed(1) + '%;background:' + color(pct) + '"></i></div>') + '</td>' +
+                '</tr>';
+        }).join('');
+
+        return '<article class="course" data-course="' + course.id + '">' + head +
+            '<div class="scroll"><table><thead><tr><th>Элемент</th><th>Тип</th><th class="num">Оценка</th><th class="num">Диапазон</th><th>Доля</th></tr></thead>' +
+            '<tbody>' + body + '</tbody></table></div></article>';
+    }
+
+    filter.addEventListener('change', function () {
+        Array.prototype.forEach.call(coursesBox.children, function (el) {
+            el.hidden = filter.value !== 'all' && el.getAttribute('data-course') !== filter.value;
+        });
+    });
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var site = form.site.value.trim().replace(/\/+$/, '');
+        var givenToken = form.token.value.trim();
+        var tokenLine = document.getElementById('token-line');
+        tokenLine.hidden = true;
+        if (!givenToken && (!form.username.value.trim() || !form.password.value)) {
+            msg.textContent = 'Введите логин и пароль или вставьте готовый токен.';
+            msg.hidden = false;
+            return;
+        }
+        var token;
+        msg.hidden = true;
+        result.hidden = true;
+        go.disabled = true;
+        go.textContent = 'Загрузка…';
+
+        var info;
+        getToken(site, givenToken, form.username.value.trim(), form.password.value)
+            .then(function (t) {
+                token = t;
+                tokenLine.innerHTML = 'Токен получен: <code>' + t.slice(0, 4) + '…' + t.slice(-4) + '</code>';
+                tokenLine.hidden = false;
+                return call(site, token, 'core_webservice_get_site_info');
+            })
+            .then(function (data) {
+                info = data;
+                return call(site, token, 'core_enrol_get_users_courses', { userid: info.userid });
+            })
+            .then(function (courses) {
+                return Promise.all(courses.map(function (c) {
+                    return call(site, token, 'gradereport_user_get_grade_items', { courseid: c.id, userid: info.userid })
+                        .then(function (g) {
+                            var ug = g.usergrades && g.usergrades[0];
+                            return { course: c, items: ug ? ug.gradeitems : [] };
+                        })
+                        .catch(function (err) {
+                            return { course: c, items: [], error: err.message };
+                        });
+                }));
+            })
+            .then(function (list) {
+                document.getElementById('who-name').textContent = info.fullname;
+                document.getElementById('who-site').textContent = info.sitename + ', курсов: ' + list.length;
+                filter.innerHTML = '<option value="all">Все курсы</option>' + list.map(function (x) {
+                    return '<option value="' + x.course.id + '">' + esc(x.course.fullname) + '</option>';
+                }).join('');
+                coursesBox.innerHTML = list.length ? list.map(function (x) {
+                    return x.error
+                        ? '<article class="course"><div class="course-head"><h2>' + esc(x.course.fullname) + '</h2></div><p class="empty">Оценки недоступны: ' + esc(x.error) + '</p></article>'
+                        : renderCourse(x.course, x.items);
+                }).join('') : '<p class="empty">Вы не записаны ни на один курс.</p>';
+                result.hidden = false;
+            })
+            .catch(function (err) {
+                msg.textContent = err.message === 'Failed to fetch'
+                    ? 'Не удалось связаться с сайтом. Проверьте адрес Moodle и подключение к интернету.'
+                    : err.message;
+                msg.hidden = false;
+            })
+            .then(function () {
+                go.disabled = false;
+                go.textContent = 'Получить оценки';
+            });
+    });
+}());
+</script>
+</body>
+</html>
